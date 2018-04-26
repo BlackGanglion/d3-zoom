@@ -1,4 +1,9 @@
-import {dispatch} from "d3-dispatch";
+
+/* 
+ * 可参考示例：svg https://bl.ocks.org/mbostock/4e3925cdc804db257a86fdef3a032a45
+ * canvas https://bl.ocks.org/mbostock/d1f7b58631e71fbf9c568345ee04a60e
+ */
+import { dispatch } from "d3-dispatch";
 import {dragDisable, dragEnable} from "d3-drag";
 import {interpolateZoom} from "d3-interpolate";
 import {event, customEvent, select, mouse, touch} from "d3-selection";
@@ -31,6 +36,8 @@ function defaultTransform() {
 }
 
 function defaultWheelDelta() {
+  // https://developer.mozilla.org/zh-CN/docs/Web/API/WheelEvent
+  // 0 表示像素级别，1 表示行级别，2 表示列级别
   return -event.deltaY * (event.deltaMode ? 120 : 1) / 500;
 }
 
@@ -65,15 +72,39 @@ export default function() {
       touchending,
       touchDelay = 500,
       wheelDelay = 150,
-      clickDistance2 = 0;
-
+    clickDistance2 = 0;
+  
+  // this.svg.call(this.zoom) 等价于 zoom(this.svg)
+  /**
+   export default function() {
+     var callback = arguments[0];
+     arguments[0] = this;
+     callback.apply(null, arguments);
+     return this;
+   }
+   */
+  // selection 
   function zoom(selection) {
     selection
+        /**
+         export default function(name, value) {
+           return arguments.length > 1 ? this.each((value == null
+            ? propertyRemove : typeof value === "function"
+            ? propertyFunction
+            : propertyConstant)(name, value))
+            : this.node()[name];
+          }
+         */
+         // __zoom: Transform {k: 1, x: 0, y: 0}
         .property("__zoom", defaultTransform)
+        // 监听 wheel.zoom
         .on("wheel.zoom", wheeled)
+        // 拖拽
         .on("mousedown.zoom", mousedowned)
+        // 双击
         .on("dblclick.zoom", dblclicked)
-      .filter(touchable)
+        .filter(touchable)
+        // touch 这块暂时不看
         .on("touchstart.zoom", touchstarted)
         .on("touchmove.zoom", touchmoved)
         .on("touchend.zoom touchcancel.zoom", touchended)
@@ -186,6 +217,7 @@ export default function() {
     this.args = args;
     this.index = -1;
     this.active = 0;
+    // 获取内层容器宽高
     this.extent = extent.apply(that, args);
   }
 
@@ -218,11 +250,15 @@ export default function() {
     }
   };
 
+  // 滚轮放大是按照鼠标位置来的
   function wheeled() {
     if (!filter.apply(this, arguments)) return;
+    // Gesture 实例，内含宽高
     var g = gesture(this, arguments),
-        t = this.__zoom,
-        k = Math.max(scaleExtent[0], Math.min(scaleExtent[1], t.k * Math.pow(2, wheelDelta.apply(this, arguments)))),
+      t = this.__zoom,
+        // 缩放系数计算
+      k = Math.max(scaleExtent[0], Math.min(scaleExtent[1], t.k * Math.pow(2, wheelDelta.apply(this, arguments)))),
+        // 当前鼠标在 svg 中所处的位置
         p = mouse(this);
 
     // If the mouse is in the same location as before, reuse it.
@@ -239,6 +275,7 @@ export default function() {
 
     // Otherwise, capture the mouse point and location at the start.
     else {
+      // invert 计算在非偏移非放大的情况下位置
       g.mouse = [p, t.invert(p)];
       interrupt(this);
       g.start();
@@ -246,6 +283,10 @@ export default function() {
 
     noevent();
     g.wheel = setTimeout(wheelidled, wheelDelay);
+    // 重点，计算方式 
+    // scale(t, k) 返回当前的 k
+    // translate( , g.mouse[0], g.mouse[1])，放大缩小对偏移量的影响，x，y
+    // constrain( , g.extent, translateExtent)
     g.zoom("mouse", constrain(translate(scale(t, k), g.mouse[0], g.mouse[1]), g.extent, translateExtent));
 
     function wheelidled() {
@@ -290,6 +331,7 @@ export default function() {
     var t0 = this.__zoom,
         p0 = mouse(this),
         p1 = t0.invert(p0),
+        // event.shiftKey 是否点击 shift
         k1 = t0.k * (event.shiftKey ? 0.5 : 2),
         t1 = constrain(translate(scale(t0, k1), p0, p1), extent.apply(this, arguments), translateExtent);
 
@@ -380,6 +422,7 @@ export default function() {
     return arguments.length ? (wheelDelta = typeof _ === "function" ? _ : constant(+_), zoom) : wheelDelta;
   };
 
+  // zoom.filter 
   zoom.filter = function(_) {
     return arguments.length ? (filter = typeof _ === "function" ? _ : constant(!!_), zoom) : filter;
   };
@@ -408,10 +451,21 @@ export default function() {
     return arguments.length ? (duration = +_, zoom) : duration;
   };
 
-  zoom.interpolate = function(_) {
+  zoom.interpolate = function (_) {
     return arguments.length ? (interpolate = _, zoom) : interpolate;
   };
 
+  // d3.zoom().on("zoom", zoomed);
+  // 事件队列，start、zoom、end
+  /**
+   * .on('zoom', () => {
+        const transform = d3.event.transform;
+        this.svg
+          .select(`.${GroupRef}${this.props.uniqueId}`)
+          .attr('transform-origin', `50% 50% 0`)
+          .attr('transform', `translate(${transform.x},${transform.y}) scale(${transform.k})`);
+      });
+   */
   zoom.on = function() {
     var value = listeners.on.apply(listeners, arguments);
     return value === listeners ? zoom : value;
